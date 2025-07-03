@@ -1,0 +1,106 @@
+# =====================================================
+# SoftCollection Environment Configuration Example
+# =====================================================
+# Copy this content to your .env file and update with actual values
+# =====================================================
+
+# =====================================================
+# DSSB_APP Database Configuration (Primary Database)
+# =====================================================
+# Main Oracle database containing:
+# - SoftCollection_theories (campaign registry)
+# - SC_local_control (control group users)
+# - SC_local_target (target group users)
+
+ORACLE_HOST=your_dssb_host.company.com
+ORACLE_PORT=1521
+ORACLE_SID=DSSB_APP
+ORACLE_USER=your_dssb_username
+ORACLE_PASSWORD=your_dssb_password
+
+# =====================================================
+# SPSS Database Configuration (Secondary Database)
+# =====================================================
+# SPSS Oracle database containing:
+# - SC_theory_users (duplicate of target group users)
+# Note: This database is optional - system works if unavailable
+
+SPSS_ORACLE_HOST=your_spss_host.company.com
+SPSS_ORACLE_PORT=1521
+SPSS_ORACLE_SID=SPSS
+SPSS_ORACLE_USER=your_spss_username
+SPSS_ORACLE_PASSWORD=your_spss_password
+
+# =====================================================
+# Application Configuration
+# =====================================================
+
+# Server Configuration
+APP_HOST=0.0.0.0
+APP_PORT=8000
+
+# Authentication (if using JWT)
+JWT_SECRET_KEY=your_very_secure_secret_key_here
+JWT_ALGORITHM=HS256
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# LDAP Configuration (if using LDAP authentication)
+LDAP_SERVER=ldap://your-ldap-server.company.com
+LDAP_PORT=389
+LDAP_BASE_DN=dc=company,dc=com
+LDAP_BIND_USER=cn=service-account,ou=users,dc=company,dc=com
+LDAP_BIND_PASSWORD=service_account_password
+
+# Application Settings
+DEBUG=false
+LOG_LEVEL=INFO
+
+# =====================================================
+# Email Configuration (Campaign Notifications)
+# =====================================================
+# Email settings for campaign success/failure notifications
+# Note: The system has hardcoded email credentials that work out-of-the-box
+# Override these environment variables if you want to use different settings
+
+# SMTP Configuration (optional overrides)
+# EMAIL_SENDER=your-sender@company.com
+# SMTP_SERVER=mail.company.com
+# SMTP_PORT=587
+# SMTP_USERNAME=your-smtp-username
+# SMTP_PASSWORD=your-smtp-password
+
+# Campaign Notification Recipients (optional override)
+# Comma-separated list of email addresses to receive campaign notifications
+# CAMPAIGN_NOTIFICATION_EMAILS=manager@company.com,admin@company.com,analyst@company.com
+
+# =====================================================
+# Database Connection Testing
+# =====================================================
+# Use these commands to test your configuration:
+#
+# Test DSSB_APP connection:
+# curl -X POST "http://localhost:8000/databases/test-connection" -H "Authorization: Bearer YOUR_TOKEN"
+#
+# Test both connections:
+# curl -X POST "http://localhost:8000/databases/test-all-connections" -H "Authorization: Bearer YOUR_TOKEN"
+
+# =====================================================
+# Security Notes
+# =====================================================
+# - Never commit this file with actual credentials to version control
+# - Use strong, unique passwords for all database accounts
+# - Consider using encrypted connection strings in production
+# - Regularly rotate database passwords
+# - Ensure database users have only necessary privileges
+
+# =====================================================
+# Required Database Privileges
+# =====================================================
+# DSSB_APP User needs:
+# - SELECT, INSERT, UPDATE on SoftCollection_theories
+# - SELECT, INSERT on SC_local_control
+# - SELECT, INSERT on SC_local_target
+# - SELECT on DSSB_DM.RB_CLIENTS (or other query tables)
+#
+# SPSS User needs:
+# - SELECT, INSERT on SC_theory_users 

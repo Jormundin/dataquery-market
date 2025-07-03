@@ -1,0 +1,53 @@
+# React Frontend .gitignore
+# Common files (.env, *.log, OS files, etc.) are handled by root .gitignore
+
+# Dependencies
+/node_modules
+/.pnp
+.pnp.js
+
+# Production builds
+/build
+/dist
+
+# Testing
+/coverage
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# React specific
+.eslintcache
+
+# Package manager files
+package-lock.json.bak
+
+# Optional npm cache directory
+.npm
+
+# Yarn
+.yarn-integrity
+yarn-error.log
+
+# Next.js build output (if used)
+.next
+out
+
+# Nuxt.js build / generate output (if used)
+.nuxt
+dist
+
+# Storybook build outputs
+.out
+.storybook-out
+
+# Temporary folders
+.tmp
+.cache
+.parcel-cache
+
+# React DevTools
+.react-devtools
