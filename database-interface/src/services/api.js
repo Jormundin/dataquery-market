@@ -346,6 +346,44 @@ export const queryBuilder = {
   }
 };
 
+// File Upload API
+export const fileAPI = {
+  // Upload file and extract IINs
+  uploadFile: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const response = await api.post('/files/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response;
+  },
+
+  // Process uploaded file with filters
+  processFile: async (filename, iinColumn, filterConfig = null) => {
+    const response = await api.post('/files/process', {
+      filename,
+      iin_column: iinColumn,
+      filter_config: filterConfig
+    });
+    return response;
+  },
+
+  // Get supported file formats
+  getSupportedFormats: async () => {
+    const response = await api.get('/files/supported-formats');
+    return response;
+  },
+
+  // Clean up old files
+  cleanupFiles: async (hours = 24) => {
+    const response = await api.delete(`/files/cleanup?hours=${hours}`);
+    return response;
+  }
+};
+
 // Utility functions
 export const formatNumber = (num) => {
   if (!num && num !== 0) return 'N/A';

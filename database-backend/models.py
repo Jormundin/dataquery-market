@@ -356,4 +356,34 @@ class CampaignListResponse(BaseModel):
     campaigns: List[CampaignListItem]
     total_count: int
     rb1_count: int
-    rb3_count: int 
+    rb3_count: int
+
+# File Upload Models
+class FileUploadResponse(BaseModel):
+    """Response for file upload"""
+    success: bool
+    message: str
+    filename: str
+    file_type: str
+    rows_processed: int
+    columns_detected: List[str]
+    iin_column: Optional[str] = None
+    iins_extracted: int
+    sample_data: List[Dict[str, Any]]
+    validation_errors: List[str] = []
+
+class FileProcessRequest(BaseModel):
+    """Request for processing uploaded file"""
+    filename: str
+    iin_column: str
+    filter_config: Optional[CampaignFilterConfig] = None
+    
+class FileProcessResponse(BaseModel):
+    """Response for file processing"""
+    success: bool
+    message: str
+    original_count: int
+    processed_count: int
+    filtered_count: int
+    iins: List[str]
+    filter_stats: Dict[str, Any] 

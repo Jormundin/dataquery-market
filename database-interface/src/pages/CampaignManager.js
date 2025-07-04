@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { campaignAPI, parquetAPI } from '../services/api';
+import { campaignAPI, parquetAPI, fileAPI } from '../services/api';
 import './CampaignManager.css';
 
 const CampaignManager = ({ user }) => {
@@ -11,10 +11,16 @@ const CampaignManager = ({ user }) => {
   const [success, setSuccess] = useState(null);
   
   // Data source selection state
-  const [dataSource, setDataSource] = useState(''); // 'rb_automatic' or 'product_selection'
+  const [dataSource, setDataSource] = useState(''); // 'rb_automatic', 'product_selection', or 'file_upload'
   const [productData, setProductData] = useState([]);
   const [availableProducts, setAvailableProducts] = useState([]);
   const [selectedProducts, setSelectedProducts] = useState([]);
+  
+  // File upload state
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [fileUploadResult, setFileUploadResult] = useState(null);
+  const [selectedIinColumn, setSelectedIinColumn] = useState('');
+  const [supportedFormats, setSupportedFormats] = useState([]);
   
   // Campaign creation state
   const [campaignForm, setCampaignForm] = useState({
@@ -125,6 +131,7 @@ const CampaignManager = ({ user }) => {
   useEffect(() => {
     loadCampaigns();
     loadParquetDatasets();
+    loadSupportedFormats();
   }, []);
 
   // Load existing campaigns
@@ -260,6 +267,85 @@ const CampaignManager = ({ user }) => {
     }
   };
 
+  // File upload functions
+  const loadSupportedFormats = async () => {
+    try {
+      const response = await fileAPI.getSupportedFormats();
+      setSupportedFormats(response.data.supported_formats);
+    } catch (err) {
+      console.warn('Could not load supported formats:', err);
+    }
+  };
+
+  const handleFileUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      setSuccess(null);
+
+      const response = await fileAPI.uploadFile(file);
+      const result = response.data;
+
+      setUploadedFile(file);
+      setFileUploadResult(result);
+      setSelectedIinColumn(result.iin_column || '');
+
+      if (result.validation_errors && result.validation_errors.length > 0) {
+        setError(`Файл загружен с предупреждениями: ${result.validation_errors.slice(0, 3).join('; ')}`);
+      } else {
+        setSuccess(`Файл загружен успешно! Найдено ${result.iins_extracted} IIN в ${result.rows_processed} строках.`);
+      }
+
+      // Set IINs to campaign form
+      if (result.iin_column) {
+        // We'll get the IINs from the processing step
+        setSuccess(prev => prev + ` Колонка IIN: ${result.iin_column}`);
+      }
+
+    } catch (err) {
+      setError('Ошибка загрузки файла: ' + (err.response?.data?.detail || err.message));
+      setUploadedFile(null);
+      setFileUploadResult(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const processUploadedFile = async () => {
+    if (!fileUploadResult || !selectedIinColumn) {
+      setError('Пожалуйста, выберите колонку IIN');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      const response = await fileAPI.processFile(
+        fileUploadResult.filename,
+        selectedIinColumn,
+        campaignForm.filter_config
+      );
+
+      const result = response.data;
+
+      setCampaignForm(prev => ({
+        ...prev,
+        user_iins: result.iins
+      }));
+
+      setSuccess(`Файл обработан! Получено ${result.filtered_count} IIN из ${result.original_count} исходных записей.`);
+
+    } catch (err) {
+      setError('Ошибка обработки файла: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Handle form input changes
   const handleMetadataChange = (field, value) => {
     setCampaignForm(prev => ({
@@ -300,6 +386,12 @@ const CampaignManager = ({ user }) => {
       // Validate required fields
       if (!campaignForm.metadata.campaign_name) {
         setError('Название кампании обязательно');
+        return;
+      }
+      
+      // Validate data source specific requirements
+      if (dataSource === 'file_upload' && (!fileUploadResult || !selectedIinColumn)) {
+        setError('Необходимо загрузить и обработать файл с клиентами');
         return;
       }
       
@@ -356,6 +448,12 @@ const CampaignManager = ({ user }) => {
             min_sum: null
           }
         });
+        
+        // Reset file upload state
+        setDataSource('');
+        setUploadedFile(null);
+        setFileUploadResult(null);
+        setSelectedIinColumn('');
       } else {
         setError('Ошибка создания кампании: ' + response.data.message);
       }
@@ -553,7 +651,7 @@ const CampaignManager = ({ user }) => {
               Выберите способ получения начальной выборки клиентов для кампании
             </p>
             
-            <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px'}}>
+            <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px'}}>
               <label style={{
                 display: 'block',
                 padding: '20px',
@@ -610,6 +708,37 @@ const CampaignManager = ({ user }) => {
                     <li>Фокус на продуктовых отношениях</li>
                     <li>Точный таргетинг по интересам</li>
                     <li>Высокая релевантность предложений</li>
+                  </ul>
+                </div>
+              </label>
+
+              <label style={{
+                display: 'block',
+                padding: '20px',
+                border: dataSource === 'file_upload' ? '2px solid #dc3545' : '1px solid #ddd',
+                borderRadius: '8px',
+                backgroundColor: dataSource === 'file_upload' ? '#fdf2f2' : 'white',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease'
+              }}>
+                <input 
+                  type="radio" 
+                  value="file_upload" 
+                  checked={dataSource === 'file_upload'}
+                  onChange={(e) => setDataSource(e.target.value)}
+                  style={{marginRight: '10px'}}
+                />
+                <div>
+                  <h4 style={{margin: '0 0 10px 0', color: '#dc3545'}}>📁 Загрузка файла</h4>
+                  <p style={{margin: '0', fontSize: '14px', color: '#666'}}>
+                    Загрузите готовый список клиентов из Excel, CSV или Parquet файла.
+                    Подходит для готовых выборок и внешних списков.
+                  </p>
+                  <ul style={{margin: '10px 0 0 20px', fontSize: '13px', color: '#666'}}>
+                    <li>Поддержка Excel (.xlsx, .xls)</li>
+                    <li>CSV файлы с различными кодировками</li>
+                    <li>Parquet файлы для больших данных</li>
+                    <li>Автоматическое определение IIN колонки</li>
                   </ul>
                 </div>
               </label>
@@ -865,6 +994,196 @@ const CampaignManager = ({ user }) => {
               }}>
                 ℹ️ Базовая выборка будет сформирована автоматически на основе выбранных колонок и фильтров
               </div>
+            </div>
+          )}
+
+          {/* File Upload Configuration */}
+          {dataSource === 'file_upload' && (
+            <div style={{
+              marginBottom: '30px', 
+              border: '1px solid #dc3545', 
+              borderRadius: '8px', 
+              padding: '20px', 
+              backgroundColor: '#fff8f8'
+            }}>
+              <h3 style={{color: '#dc3545', marginTop: 0}}>📁 Загрузка файла с клиентами</h3>
+              
+              {!fileUploadResult ? (
+                <div>
+                  <p style={{color: '#666', marginBottom: '15px'}}>
+                    Загрузите файл со списком клиентов. Поддерживаются форматы: Excel (.xlsx, .xls), CSV, Parquet
+                  </p>
+                  
+                  {/* File Upload Input */}
+                  <div style={{marginBottom: '20px'}}>
+                    <label style={{
+                      display: 'block',
+                      padding: '40px 20px',
+                      border: '2px dashed #dc3545',
+                      borderRadius: '8px',
+                      textAlign: 'center',
+                      cursor: 'pointer',
+                      backgroundColor: '#ffffff',
+                      transition: 'all 0.3s ease'
+                    }}>
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls,.csv,.parquet"
+                        onChange={handleFileUpload}
+                        style={{display: 'none'}}
+                        disabled={loading}
+                      />
+                      <div style={{fontSize: '48px', marginBottom: '15px'}}>📄</div>
+                      <div style={{fontSize: '18px', fontWeight: '500', marginBottom: '10px', color: '#dc3545'}}>
+                        {loading ? '⏳ Загружаем...' : 'Выберите файл или перетащите сюда'}
+                      </div>
+                      <div style={{fontSize: '14px', color: '#666'}}>
+                        Поддерживаемые форматы: .xlsx, .xls, .csv, .parquet (макс. 50MB)
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* Supported Formats Info */}
+                  {supportedFormats.length > 0 && (
+                    <div style={{
+                      padding: '15px',
+                      backgroundColor: '#f8f9fa',
+                      border: '1px solid #dee2e6',
+                      borderRadius: '4px',
+                      marginBottom: '20px'
+                    }}>
+                      <h5 style={{margin: '0 0 10px 0', color: '#495057'}}>Поддерживаемые форматы:</h5>
+                      <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px'}}>
+                        {supportedFormats.map((format, index) => (
+                          <div key={index} style={{
+                            padding: '8px 12px',
+                            backgroundColor: 'white',
+                            border: '1px solid #ddd',
+                            borderRadius: '4px',
+                            fontSize: '13px'
+                          }}>
+                            <strong>{format.extension}</strong> - {format.description}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <div style={{
+                    padding: '15px',
+                    backgroundColor: '#d4edda',
+                    border: '1px solid #c3e6cb',
+                    borderRadius: '4px',
+                    marginBottom: '20px'
+                  }}>
+                    <h5 style={{margin: '0 0 10px 0', color: '#155724'}}>
+                      ✅ Файл загружен: {uploadedFile?.name}
+                    </h5>
+                    <p style={{margin: '0', fontSize: '14px', color: '#155724'}}>
+                      Обработано {fileUploadResult.rows_processed} строк, найдено {fileUploadResult.iins_extracted} IIN
+                    </p>
+                  </div>
+
+                  {/* IIN Column Selection */}
+                  <div style={{marginBottom: '20px'}}>
+                    <h4 style={{color: '#495057', marginBottom: '10px'}}>🎯 Выбор колонки IIN</h4>
+                    <div style={{display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '15px', alignItems: 'start'}}>
+                      <div>
+                        <label style={{display: 'block', marginBottom: '5px', fontSize: '14px'}}>
+                          Колонка с IIN
+                        </label>
+                        <select
+                          value={selectedIinColumn}
+                          onChange={(e) => setSelectedIinColumn(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px',
+                            border: '1px solid #ddd',
+                            borderRadius: '4px'
+                          }}
+                        >
+                          <option value="">Выберите колонку...</option>
+                          {fileUploadResult.columns_detected.map(column => (
+                            <option key={column} value={column}>{column}</option>
+                          ))}
+                        </select>
+                      </div>
+                      
+                      <div style={{
+                        padding: '15px',
+                        backgroundColor: '#e3f2fd',
+                        border: '1px solid #2196f3',
+                        borderRadius: '4px'
+                      }}>
+                        <h6 style={{margin: '0 0 10px 0', color: '#1976d2'}}>Образец данных:</h6>
+                        <div style={{fontSize: '12px', fontFamily: 'monospace'}}>
+                          {fileUploadResult.sample_data.slice(0, 3).map((row, idx) => (
+                            <div key={idx} style={{marginBottom: '5px'}}>
+                              {Object.entries(row).slice(0, 3).map(([key, value]) => (
+                                <span key={key} style={{marginRight: '15px'}}>
+                                  <strong>{key}:</strong> {String(value).substring(0, 20)}
+                                </span>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Process Button */}
+                  <div style={{marginBottom: '20px'}}>
+                    <button 
+                      onClick={processUploadedFile}
+                      disabled={loading || !selectedIinColumn}
+                      style={{
+                        padding: '12px 24px',
+                        backgroundColor: selectedIinColumn ? '#dc3545' : '#6c757d',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: selectedIinColumn && !loading ? 'pointer' : 'not-allowed',
+                        fontSize: '16px',
+                        marginRight: '15px'
+                      }}
+                    >
+                      {loading ? '⏳ Обрабатываем...' : '🔄 Обработать файл с фильтрами'}
+                    </button>
+                    
+                    <button 
+                      onClick={() => {
+                        setFileUploadResult(null);
+                        setUploadedFile(null);
+                        setSelectedIinColumn('');
+                      }}
+                      style={{
+                        padding: '12px 24px',
+                        backgroundColor: '#6c757d',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '16px'
+                      }}
+                    >
+                      🗑️ Загрузить другой файл
+                    </button>
+                  </div>
+
+                  {/* File Processing Info */}
+                  <div style={{
+                    padding: '10px',
+                    backgroundColor: '#fff3cd',
+                    border: '1px solid #ffeaa7',
+                    borderRadius: '4px'
+                  }}>
+                    ℹ️ После обработки файла будут применены выбранные фильтры. 
+                    Если фильтры не нужны, нажмите "Обработать файл с фильтрами" без настройки фильтров.
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

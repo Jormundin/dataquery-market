@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query, Response, Depends
+from fastapi import FastAPI, HTTPException, Query, Response, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -29,6 +29,7 @@ from scheduler import (
 )
 from parquet_service import parquet_service
 from campaign_service import campaign_service
+from file_upload_service import file_upload_service
 
 # Load environment variables
 load_dotenv()
@@ -2635,6 +2636,159 @@ async def debug_recent_activity_raw(current_user: dict = Depends(get_current_use
             "error": f"Error in debug endpoint: {str(e)}",
             "timestamp": datetime.now().isoformat()
         }
+
+# File Upload Endpoints
+@app.post("/files/upload", response_model=FileUploadResponse)
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    """Upload and validate file (Excel, CSV, Parquet)"""
+    
+    try:
+        # Validate file type
+        allowed_types = {
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',  # .xlsx
+            'application/vnd.ms-excel',  # .xls
+            'text/csv',  # .csv
+            'application/octet-stream',  # .parquet (sometimes)
+            'application/x-parquet'  # .parquet
+        }
+        
+        file_extension = os.path.splitext(file.filename)[1].lower()
+        
+        # Read file content
+        file_content = await file.read()
+        
+        # Validate file
+        temp_path = file_upload_service.save_uploaded_file(file_content, file.filename)
+        validation_result = file_upload_service.validate_file(temp_path, file.filename)
+        
+        if not validation_result["valid"]:
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise HTTPException(status_code=400, detail="; ".join(validation_result["errors"]))
+        
+        # Extract IINs from file
+        extraction_result = file_upload_service.extract_iins_from_file(
+            temp_path, 
+            file_extension
+        )
+        
+        if not extraction_result["success"]:
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise HTTPException(status_code=400, detail=extraction_result["message"])
+        
+        return FileUploadResponse(
+            success=True,
+            message=extraction_result["message"],
+            filename=extraction_result["filename"],
+            file_type=extraction_result["file_type"],
+            rows_processed=extraction_result["rows_processed"],
+            columns_detected=extraction_result["columns_detected"],
+            iin_column=extraction_result.get("iin_column"),
+            iins_extracted=extraction_result["iins_extracted"],
+            sample_data=extraction_result["sample_data"],
+            validation_errors=extraction_result.get("validation_errors", [])
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading file: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка загрузки файла: {str(e)}")
+
+@app.post("/files/process", response_model=FileProcessResponse)
+async def process_uploaded_file(
+    request: FileProcessRequest,
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    """Process uploaded file with filters"""
+    
+    try:
+        # Find the uploaded file
+        file_path = None
+        for uploaded_file in file_upload_service.upload_dir.glob(f"*_{request.filename}"):
+            file_path = str(uploaded_file)
+            break
+        
+        if not file_path or not os.path.exists(file_path):
+            raise HTTPException(status_code=404, detail=f"Файл {request.filename} не найден")
+        
+        # Process file with filters
+        result = file_upload_service.process_file_with_filters(
+            file_path,
+            request.iin_column,
+            request.filter_config.dict() if request.filter_config else None
+        )
+        
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result["message"])
+        
+        return FileProcessResponse(
+            success=result["success"],
+            message=result["message"],
+            original_count=result["original_count"],
+            processed_count=result["processed_count"],
+            filtered_count=result["filtered_count"],
+            iins=result["iins"],
+            filter_stats=result["filter_stats"]
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing file: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка обработки файла: {str(e)}")
+
+@app.delete("/files/cleanup")
+async def cleanup_uploaded_files(
+    hours: int = Query(24, description="Удалить файлы старше указанного количества часов"),
+    current_user: dict = Depends(get_current_user_dependency)
+):
+    """Clean up old uploaded files"""
+    
+    try:
+        file_upload_service.cleanup_old_files(hours)
+        return {"success": True, "message": f"Очистка файлов старше {hours} часов выполнена"}
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up files: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка очистки файлов: {str(e)}")
+
+@app.get("/files/supported-formats")
+async def get_supported_file_formats():
+    """Get list of supported file formats"""
+    
+    return {
+        "supported_formats": [
+            {
+                "extension": ".xlsx",
+                "description": "Excel 2007+ файлы",
+                "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            },
+            {
+                "extension": ".xls", 
+                "description": "Excel 97-2003 файлы",
+                "mime_type": "application/vnd.ms-excel"
+            },
+            {
+                "extension": ".csv",
+                "description": "Comma-separated values файлы",
+                "mime_type": "text/csv"
+            },
+            {
+                "extension": ".parquet",
+                "description": "Apache Parquet файлы",
+                "mime_type": "application/x-parquet"
+            }
+        ],
+        "max_file_size": "50MB",
+        "required_columns": "IIN колонка (12-цифровые номера)"
+    }
 
 if __name__ == "__main__":
     import uvicorn
