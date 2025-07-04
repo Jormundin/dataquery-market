@@ -18,7 +18,8 @@ from models import *
 from database import (
     get_databases, get_tables, get_table_columns, 
     test_connection, test_spss_connection, test_dssb_ocds_connection, 
-    test_ed_ocds_connection, test_all_connections, execute_query
+    test_ed_ocds_connection, test_all_connections, execute_query,
+    get_connection_DSSB_OCDS, get_connection_SPSS
 )
 from query_builder import QueryBuilder
 from auth import authenticate_user, create_access_token, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
@@ -1786,8 +1787,6 @@ async def get_campaign_data_distribution(
 ):
     """Отладка: показать распределение данных кампании по базам данных"""
     try:
-        from database import execute_query, get_connection_SPSS
-        
         # Get data from DSSB_APP tables
         control_query = f"""
         SELECT THEORY_ID, COUNT(*) as user_count, 'DSSB_APP.SC_local_control' as source_table
@@ -1877,8 +1876,6 @@ async def get_campaign_data_distribution(
 async def cleanup_spss_control_groups(current_user: dict = Depends(get_current_user_dependency)):
     """Отладка: удалить контрольные группы из SPSS.SC_theory_users (они должны быть только в control)"""
     try:
-        from database import get_connection_SPSS
-        
         # Check admin permissions for this dangerous operation
         if 'admin' not in current_user.get('permissions', []):
             return {
@@ -2093,8 +2090,6 @@ async def preview_daily_distribution(current_user: dict = Depends(get_current_us
 async def get_monitoring_overview(current_user: dict = Depends(get_current_user_dependency)):
     """Get high-level monitoring overview of all tables and activities"""
     try:
-        from database import execute_query, get_connection_SPSS
-        
         overview = {
             "timestamp": datetime.now().isoformat(),
             "tables": {},
@@ -2187,8 +2182,6 @@ async def get_daily_statistics(
 ):
     """Get daily upload statistics for the last N days"""
     try:
-        from database import execute_query, get_connection_SPSS
-        
         daily_stats = {
             "period": f"Last {days_back} days",
             "timestamp": datetime.now().isoformat(),
@@ -2288,8 +2281,6 @@ async def get_daily_statistics(
 async def get_campaign_distribution(current_user: dict = Depends(get_current_user_dependency)):
     """Get user distribution by campaigns across all tables"""
     try:
-        from database import execute_query, get_connection_SPSS
-        
         distribution = {
             "timestamp": datetime.now().isoformat(),
             "campaigns": [],
@@ -2440,8 +2431,6 @@ async def get_recent_activity(
 ):
     """Get recent upload activity across all tables"""
     try:
-        from database import execute_query, get_connection_SPSS
-        
         recent_activity = {
             "timestamp": datetime.now().isoformat(),
             "activities": [],
@@ -2559,8 +2548,6 @@ async def get_recent_activity(
 async def debug_recent_activity_raw(current_user: dict = Depends(get_current_user_dependency)):
     """Debug endpoint to check raw recent activity data"""
     try:
-        from database import execute_query, get_connection_SPSS
-        
         debug_info = {
             "timestamp": datetime.now().isoformat(),
             "local_control": {},

@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, date
 import pandas as pd
 from database import (
-    get_connection, get_connection_DSSB_OCDS, 
+    get_connection_DSSB_APP, get_connection_DSSB_OCDS, 
     get_connection_SPSS, get_connection_ED_OCDS
 )
 from parquet_service import parquet_service

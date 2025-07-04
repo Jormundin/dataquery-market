@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { campaignAPI, parquetAPI, fileAPI } from '../services/api';
-import './CampaignManager.css';
 
 const CampaignManager = ({ user }) => {
   // State management

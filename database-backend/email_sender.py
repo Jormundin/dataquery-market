@@ -49,9 +49,6 @@ SMTP_PASSWORD = os.getenv('SMTP_PASSWORD', SMTP_PASSWORD)
 
 # HARDCODED CAMPAIGN NOTIFICATION RECIPIENTS
 CAMPAIGN_NOTIFICATION_EMAILS = [
-    'manager@example.com',  # Replace with actual manager email
-    'admin@example.com',    # Replace with actual admin email
-    'analyst@example.com'   # Replace with actual analyst email
 ]
 
 # Override with environment variables if configured
